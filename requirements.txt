@@ -1,0 +1,10 @@
+streamlit
+streamlit-webrtc==0.43.0
+aioice==0.7.4
+torch==2.0.1
+transformers==4.31.0
+googletrans==4.0.0-rc1
+vosk==0.3.45
+pyaudio
+watchdog
+requests
