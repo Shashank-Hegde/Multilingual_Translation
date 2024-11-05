@@ -213,15 +213,20 @@ def audio_recorder_webrtc():
             file_name = save_audio_file(audio_bytes, "wav")
             if file_name:
                 st.success("Audio recorded and saved successfully!")
-                st.info("Transcribing your audio... Please wait.")
-                # Transcribe the audio
-                transcribed_text = transcribe_audio(file_name, model)
+                with st.spinner("Transcribing your audio... Please wait."):
+                    # Transcribe the audio
+                    transcribed_text = transcribe_audio(file_name, model)
                 if transcribed_text:
                     # Translate the transcribed text to English
                     translated_text = translate_to_english(transcribed_text)
                     # Display the results
                     st.subheader("📝 Transcribed Text (English):")
                     st.write(translated_text)
+                    # Optionally, delete the audio file after processing
+                    try:
+                        os.remove(file_name)
+                    except Exception as e:
+                        st.warning(f"Could not delete temporary file: {e}")
                 else:
                     st.error("Failed to transcribe the audio.")
             else:
