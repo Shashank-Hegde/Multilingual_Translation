@@ -165,7 +165,7 @@ st.markdown("""
 
 recorded_audio = audio_recorder(
     text="Click to record",
-    format="wav",
+    format=".wav",
     sample_rate=16000,
     channels=1,
     max_duration=30,  # Maximum recording duration in seconds
