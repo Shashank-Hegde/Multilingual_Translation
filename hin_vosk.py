@@ -165,10 +165,6 @@ st.markdown("""
 
 recorded_audio = audio_recorder(
     text="Click to record",
-    neutral_color="#cccccc",
-    active_color="#ff0000",
-    border_color="#cccccc",
-    background_color="#ffffff",
     format="wav",
     sample_rate=16000,
     channels=1,
