@@ -40,6 +40,7 @@ class AudioProcessor(AudioProcessorBase):
         self.audio_data = bytes()
 
     def recv(self, frame):
+        # Accumulate audio frames
         self.audio_data += frame.to_bytes()
         return frame
 
@@ -205,7 +206,8 @@ def audio_recorder_webrtc():
         async_processing=True,
     )
 
-    if webrtc_ctx.audio_processor and webrtc_ctx.state.playing:
+    if webrtc_ctx.audio_processor and not webrtc_ctx.state.playing:
+        # Recording has stopped
         audio_bytes = webrtc_ctx.audio_processor.audio_data
         if audio_bytes and not st.session_state.get('audio_recorded'):
             st.session_state.audio_recorded = True
@@ -222,15 +224,17 @@ def audio_recorder_webrtc():
                     # Display the results
                     st.subheader("📝 Transcribed Text (English):")
                     st.write(translated_text)
-                    # Optionally, delete the audio file after processing
-                    try:
-                        os.remove(file_name)
-                    except Exception as e:
-                        st.warning(f"Could not delete temporary file: {e}")
                 else:
                     st.error("Failed to transcribe the audio.")
+                # Optionally, delete the audio file after processing
+                try:
+                    os.remove(file_name)
+                except Exception as e:
+                    st.warning(f"Could not delete temporary file: {e}")
             else:
                 st.error("Failed to save the audio file.")
+    elif webrtc_ctx.audio_processor and webrtc_ctx.state.playing:
+        st.write("Recording... Speak now.")
     else:
         st.write("Please record your symptoms using the microphone button above.")
 
