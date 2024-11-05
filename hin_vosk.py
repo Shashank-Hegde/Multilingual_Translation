@@ -163,7 +163,16 @@ st.markdown("""
 # Audio Recorder
 # -----------------------------
 
-recorded_audio = audio_recorder(key="voice_input_initial"
+recorded_audio = audio_recorder(
+    text="Click to record",
+    neutral_color="#cccccc",
+    active_color="#ff0000",
+    border_color="#cccccc",
+    background_color="#ffffff",
+    format="wav",
+    sample_rate=16000,
+    channels=1,
+    max_duration=30,  # Maximum recording duration in seconds
 )
 
 if recorded_audio:
