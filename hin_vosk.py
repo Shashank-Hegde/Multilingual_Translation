@@ -71,34 +71,43 @@ def translate_text(text, translator):
     """
     if not text.strip():
         return ""
-    translation = translator.translate(text, src='hi', dest='en')
-    return translation.text
+    try:
+        translation = translator.translate(text, src='hi', dest='en')
+        return translation.text
+    except Exception as e:
+        st.error(f"Translation failed: {e}")
+        return ""
 
 def transcribe_audio(audio_bytes, model, translator):
     """
     Transcribes the recorded audio and translates it.
     """
-    # Save the audio bytes to a temporary WAV file
+    if not audio_bytes:
+        st.error("No audio data received. Please try recording again.")
+        return "", ""
+    
+    # Save audio_bytes to temp.wav
     temp_wav_path = "temp.wav"
     with open(temp_wav_path, "wb") as f:
         f.write(audio_bytes)
-
+    
     try:
         wf = wave.open(temp_wav_path, "rb")
     except wave.Error:
         st.error("Unsupported audio format. Please ensure the recording is in WAV format.")
-        return
-
+        os.remove(temp_wav_path)
+        return "", ""
+    
     if wf.getnchannels() != 1 or wf.getsampwidth() != 2 or wf.getframerate() not in [8000, 16000, 32000, 44100, 48000]:
         st.error("Audio must be WAV format mono PCM with a supported sample rate (8000, 16000, 32000, 44100, 48000 Hz).")
         wf.close()
         os.remove(temp_wav_path)
-        return
-
+        return "", ""
+    
     rec = KaldiRecognizer(model, wf.getframerate())
     transcript_hindi = ""
     transcript_english = ""
-
+    
     while True:
         data = wf.readframes(4000)
         if len(data) == 0:
@@ -111,7 +120,7 @@ def transcribe_audio(audio_bytes, model, translator):
                 transcript_hindi += " " + text_hindi
                 translation = translate_text(text_hindi, translator)
                 transcript_english += " " + translation
-
+    
     final_result = rec.FinalResult()
     result_dict = json.loads(final_result)
     text_hindi = result_dict.get("text", "")
@@ -119,7 +128,7 @@ def transcribe_audio(audio_bytes, model, translator):
         transcript_hindi += " " + text_hindi
         translation = translate_text(text_hindi, translator)
         transcript_english += " " + translation
-
+    
     wf.close()
     os.remove(temp_wav_path)
     return transcript_hindi.strip(), transcript_english.strip()
@@ -144,7 +153,7 @@ st.markdown("""
     This application converts your Hindi speech from a recorded audio input to English text using Vosk for speech recognition and Google Translate for translation.
 
     **Instructions:**
-    1. Click on **Start Recording** to begin.
+    1. Click on **Click to record** to begin.
     2. Speak clearly in Hindi.
     3. Click on **Stop Recording** to end the session.
     4. The Hindi transcription and its English translation will appear below.
@@ -154,7 +163,17 @@ st.markdown("""
 # Audio Recorder
 # -----------------------------
 
-recorded_audio = audio_recorder(key="voice_input_initial")
+recorded_audio = audio_recorder(
+    text="Click to record",
+    neutral_color="#cccccc",
+    active_color="#ff0000",
+    border_color="#cccccc",
+    background_color="#ffffff",
+    format="wav",
+    sample_rate=16000,
+    channels=1,
+    max_duration=30,  # Maximum recording duration in seconds
+)
 
 if recorded_audio:
     st.success("Recording complete.")
