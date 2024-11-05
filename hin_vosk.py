@@ -156,7 +156,7 @@ st.markdown("""
 
 recorded_audio = audio_recorder(
     text="Click to record",
-    icon="🎤",
+    # Removed 'icon' parameter
     pause_text="Stop Recording",
     recording_text="Recording...",
     neutral_color="#cccccc",
