@@ -90,7 +90,7 @@ def transcribe_audio(audio_bytes, model, translator):
         return
 
     if wf.getnchannels() != 1 or wf.getsampwidth() != 2 or wf.getframerate() not in [8000, 16000, 32000, 44100, 48000]:
-        st.error("Audio must be WAV format mono PCM.")
+        st.error("Audio must be WAV format mono PCM with a supported sample rate (8000, 16000, 32000, 44100, 48000 Hz).")
         wf.close()
         os.remove(temp_wav_path)
         return
