@@ -9,7 +9,7 @@ from googletrans import Translator
 import requests
 import zipfile
 import io
-from audio_recorder_streamlit import audio_recorder
+from streamlit_webrtc import webrtc_streamer, AudioProcessorBase, ClientSettings
 
 # -----------------------------
 # Configuration and Setup
@@ -27,12 +27,21 @@ if 'transcript_hindi' not in st.session_state:
     st.session_state.transcript_hindi = ""
 if 'transcript_english' not in st.session_state:
     st.session_state.transcript_english = ""
-if 'symptoms_processed' not in st.session_state:
-    st.session_state.symptoms_processed = False
+if 'audio_recorded' not in st.session_state:
+    st.session_state.audio_recorded = False
 
 # -----------------------------
-# Helper Functions
+# Helper Classes and Functions
 # -----------------------------
+
+class AudioProcessor(AudioProcessorBase):
+    def __init__(self):
+        super().__init__()
+        self.audio_data = bytes()
+
+    def recv(self, frame):
+        self.audio_data += frame.to_bytes()
+        return frame
 
 def save_audio_file(audio_bytes, file_extension="wav"):
     """
@@ -55,12 +64,13 @@ def save_audio_file(audio_bytes, file_extension="wav"):
         st.error(f"Error saving audio file: {e}")
         return None
 
-def transcribe_audio(file_path):
+def transcribe_audio(file_path, model):
     """
     Transcribes the audio file using Vosk.
 
     Args:
         file_path (str): Path to the audio file.
+        model (Model): Loaded Vosk model.
 
     Returns:
         str: Transcribed Hindi text if successful, else None.
@@ -174,50 +184,53 @@ st.markdown("""
     This application converts your Hindi speech from a recorded audio input to English text using Vosk for speech recognition and Google Translate for translation.
 
     **Instructions:**
-    1. Click on **Click to record** to begin.
+    1. Click on **Start Recording** to begin.
     2. Speak clearly in Hindi.
     3. Click on **Stop Recording** to end the session.
     4. The Hindi transcription and its English translation will appear below.
 """)
 
 # -----------------------------
-# Audio Recorder
+# Audio Recorder using streamlit-webrtc
 # -----------------------------
 
-# Simplified audio_recorder call with only supported parameters
-recorded_audio = audio_recorder(
-    key="voice_input_initial",
-    text="Click to record"
-)
+def audio_recorder_webrtc():
+    webrtc_ctx = webrtc_streamer(
+        key="voice-input",
+        audio_processor_factory=AudioProcessor,
+        client_settings=ClientSettings(
+            media_stream_constraints={"audio": True, "video": False},
+            rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
+        ),
+        async_processing=True,
+    )
 
-if recorded_audio and not st.session_state.get('symptoms_processed'):
-    # Play the recorded audio
-    st.audio(recorded_audio, format="audio/wav")
-    
-    # Save the audio file
-    file_name = save_audio_file(recorded_audio, "wav")
-    if file_name:
-        st.success("Audio recorded and saved successfully!")
-        st.info("Transcribing your audio... Please wait.")
-        
-        # Transcribe the audio
-        transcribed_text = transcribe_audio(file_name)
-        if transcribed_text:
-            # Translate the transcribed text to English
-            translated_text = translate_to_english(transcribed_text)
-            
-            # Display the results
-            st.subheader("📝 Transcribed Text (English):")
-            st.write(translated_text)
-            
-            # Update session state to prevent re-processing
-            st.session_state.symptoms_processed = True
-        else:
-            st.error("Failed to transcribe the audio.")
+    if webrtc_ctx.audio_processor and webrtc_ctx.state.playing:
+        audio_bytes = webrtc_ctx.audio_processor.audio_data
+        if audio_bytes and not st.session_state.get('audio_recorded'):
+            st.session_state.audio_recorded = True
+            # Save the audio file
+            file_name = save_audio_file(audio_bytes, "wav")
+            if file_name:
+                st.success("Audio recorded and saved successfully!")
+                st.info("Transcribing your audio... Please wait.")
+                # Transcribe the audio
+                transcribed_text = transcribe_audio(file_name, model)
+                if transcribed_text:
+                    # Translate the transcribed text to English
+                    translated_text = translate_to_english(transcribed_text)
+                    # Display the results
+                    st.subheader("📝 Transcribed Text (English):")
+                    st.write(translated_text)
+                else:
+                    st.error("Failed to transcribe the audio.")
+            else:
+                st.error("Failed to save the audio file.")
     else:
-        st.error("Failed to save the audio file.")
-else:
-    st.write("Please record your symptoms using the microphone button above.")
+        st.write("Please record your symptoms using the microphone button above.")
+
+# Embed the audio recorder
+audio_recorder_webrtc()
 
 # -----------------------------
 # Optional: Fallback Text Input
