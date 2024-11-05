@@ -3,8 +3,8 @@
 import os
 import json
 import streamlit as st
-from streamlit_webrtc import webrtc_streamer, WebRtcMode, ClientSettings, AudioProcessorBase
 from vosk import Model, KaldiRecognizer
+import wave
 import numpy as np
 from googletrans import Translator
 import requests
@@ -27,8 +27,6 @@ if 'transcript_hindi' not in st.session_state:
     st.session_state.transcript_hindi = ""
 if 'transcript_english' not in st.session_state:
     st.session_state.transcript_english = ""
-if 'recording' not in st.session_state:
-    st.session_state.recording = False
 
 # -----------------------------
 # Helper Functions
@@ -75,27 +73,48 @@ def translate_text(text, translator):
     translation = translator.translate(text, src='hi', dest='en')
     return translation.text
 
-# -----------------------------
-# Custom Audio Processor
-# -----------------------------
+def transcribe_audio(audio_file, model, translator):
+    """
+    Transcribes the uploaded audio file and translates it.
+    """
+    try:
+        wf = wave.open(audio_file, "rb")
+    except wave.Error:
+        st.error("Unsupported audio format. Please upload a WAV file.")
+        return
 
-class VoskAudioProcessor(AudioProcessorBase):
-    def __init__(self, model, translator):
-        self.model = model
-        self.rec = KaldiRecognizer(self.model, 16000)
-        self.translator = translator
+    if wf.getnchannels() != 1 or wf.getsampwidth() != 2 or wf.getframerate() not in [8000, 16000, 32000, 44100, 48000]:
+        st.error("Audio file must be WAV format mono PCM.")
+        wf.close()
+        return
 
-    def recv(self, frame):
-        data = frame.to_ndarray().astype(np.int16).tobytes()
-        if self.rec.AcceptWaveform(data):
-            result = self.rec.Result()
+    rec = KaldiRecognizer(model, wf.getframerate())
+    transcript_hindi = ""
+    transcript_english = ""
+
+    while True:
+        data = wf.readframes(4000)
+        if len(data) == 0:
+            break
+        if rec.AcceptWaveform(data):
+            result = rec.Result()
             result_dict = json.loads(result)
             text_hindi = result_dict.get("text", "")
             if text_hindi:
-                st.session_state.transcript_hindi += " " + text_hindi
-                translation = translate_text(text_hindi, self.translator)
-                st.session_state.transcript_english += " " + translation
-        return frame
+                transcript_hindi += " " + text_hindi
+                translation = translate_text(text_hindi, translator)
+                transcript_english += " " + translation
+
+    final_result = rec.FinalResult()
+    result_dict = json.loads(final_result)
+    text_hindi = result_dict.get("text", "")
+    if text_hindi:
+        transcript_hindi += " " + text_hindi
+        translation = translate_text(text_hindi, translator)
+        transcript_english += " " + translation
+
+    wf.close()
+    return transcript_hindi.strip(), transcript_english.strip()
 
 # -----------------------------
 # Model and Translator Loading
@@ -109,90 +128,45 @@ model = load_vosk_model(MODEL_PATH)
 translator = load_translator()
 
 # -----------------------------
-# WebRTC Configuration
-# -----------------------------
-
-RTC_CONFIGURATION = {
-    "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
-}
-
-MEDIA_STREAM_CONSTRAINTS = {
-    "audio": True,
-    "video": False
-}
-
-# -----------------------------
 # Streamlit App UI
 # -----------------------------
 
 st.title("🗣️ Hindi Speech-to-Text Converter")
 st.markdown("""
-    This application converts your Hindi speech to English text in real-time using Vosk for speech recognition and Google Translate for translation.
+    This application converts your Hindi speech from an audio file to English text using Vosk for speech recognition and Google Translate for translation.
 
     **Instructions:**
-    1. Click on **Start Recording** to begin.
-    2. Speak clearly in Hindi.
-    3. Your Hindi speech and its English translation will appear below.
-    4. Click on **Stop Recording** to end the session.
+    1. Upload a `.wav` audio file with Hindi speech.
+    2. The app will process and display the Hindi transcription and its English translation.
 """)
 
 # -----------------------------
-# Sidebar Controls
+# Audio File Upload
 # -----------------------------
 
-st.sidebar.header("Control Panel")
-start = st.sidebar.button("Start Recording")
-stop = st.sidebar.button("Stop Recording")
-reset = st.sidebar.button("Reset Transcriptions")
+uploaded_file = st.file_uploader("Upload a WAV audio file", type=["wav"])
 
-# Handle Start and Stop buttons
-if start:
-    st.session_state.recording = True
-    st.session_state.transcript_hindi = ""
-    st.session_state.transcript_english = ""
-    st.sidebar.write("Recording... Speak into your microphone.")
-
-if stop:
-    st.session_state.recording = False
-    st.sidebar.write("Recording stopped.")
-
-# -----------------------------
-# Display Transcriptions
-# -----------------------------
-
-st.header("Transcription Results")
-col1, col2 = st.columns(2)
-
-with col1:
-    st.subheader("Hindi Text")
-    st.text_area("Hindi", st.session_state.transcript_hindi, height=300)
-
-with col2:
-    st.subheader("English Translation")
-    st.text_area("English", st.session_state.transcript_english, height=300)
-
-# -----------------------------
-# Initialize WebRTC Streamer
-# -----------------------------
-
-if st.session_state.recording:
-    webrtc_streamer(
-        key="speech-to-text",
-        mode=WebRtcMode.SENDONLY,
-        rtc_configuration=RTC_CONFIGURATION,
-        media_stream_constraints=MEDIA_STREAM_CONSTRAINTS,
-        audio_processor_factory=lambda: VoskAudioProcessor(model, translator),
-        async_processing=True,
-    )
-
-# -----------------------------
-# Handle Reset Button
-# -----------------------------
-
-if reset:
-    st.session_state.transcript_hindi = ""
-    st.session_state.transcript_english = ""
-    st.sidebar.write("Transcriptions have been reset.")
+if uploaded_file is not None:
+    # Save the uploaded file temporarily
+    with open("temp.wav", "wb") as f:
+        f.write(uploaded_file.read())
+    # Transcribe the audio
+    with st.spinner("Transcribing..."):
+        transcript_hindi, transcript_english = transcribe_audio("temp.wav", model, translator)
+    # Display results
+    st.header("Transcription Results")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("Hindi Text")
+        st.text_area("Hindi", transcript_hindi, height=300)
+    
+    with col2:
+        st.subheader("English Translation")
+        st.text_area("English", transcript_english, height=300)
+    
+    # Clean up temporary file
+    os.remove("temp.wav")
 
 # -----------------------------
 # Footer
