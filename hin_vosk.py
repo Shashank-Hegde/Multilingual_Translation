@@ -10,6 +10,7 @@ from googletrans import Translator
 import requests
 import zipfile
 import io
+from audio_recorder_streamlit import audio_recorder
 
 # -----------------------------
 # Configuration and Setup
@@ -73,19 +74,25 @@ def translate_text(text, translator):
     translation = translator.translate(text, src='hi', dest='en')
     return translation.text
 
-def transcribe_audio(audio_file, model, translator):
+def transcribe_audio(audio_bytes, model, translator):
     """
-    Transcribes the uploaded audio file and translates it.
+    Transcribes the recorded audio and translates it.
     """
+    # Save the audio bytes to a temporary WAV file
+    temp_wav_path = "temp.wav"
+    with open(temp_wav_path, "wb") as f:
+        f.write(audio_bytes)
+
     try:
-        wf = wave.open(audio_file, "rb")
+        wf = wave.open(temp_wav_path, "rb")
     except wave.Error:
-        st.error("Unsupported audio format. Please upload a WAV file.")
+        st.error("Unsupported audio format. Please ensure the recording is in WAV format.")
         return
 
     if wf.getnchannels() != 1 or wf.getsampwidth() != 2 or wf.getframerate() not in [8000, 16000, 32000, 44100, 48000]:
-        st.error("Audio file must be WAV format mono PCM.")
+        st.error("Audio must be WAV format mono PCM.")
         wf.close()
+        os.remove(temp_wav_path)
         return
 
     rec = KaldiRecognizer(model, wf.getframerate())
@@ -114,6 +121,7 @@ def transcribe_audio(audio_file, model, translator):
         transcript_english += " " + translation
 
     wf.close()
+    os.remove(temp_wav_path)
     return transcript_hindi.strip(), transcript_english.strip()
 
 # -----------------------------
@@ -133,26 +141,39 @@ translator = load_translator()
 
 st.title("🗣️ Hindi Speech-to-Text Converter")
 st.markdown("""
-    This application converts your Hindi speech from an audio file to English text using Vosk for speech recognition and Google Translate for translation.
+    This application converts your Hindi speech from a recorded audio input to English text using Vosk for speech recognition and Google Translate for translation.
 
     **Instructions:**
-    1. Upload a `.wav` audio file with Hindi speech.
-    2. The app will process and display the Hindi transcription and its English translation.
+    1. Click on **Start Recording** to begin.
+    2. Speak clearly in Hindi.
+    3. Click on **Stop Recording** to end the session.
+    4. The Hindi transcription and its English translation will appear below.
 """)
 
 # -----------------------------
-# Audio File Upload
+# Audio Recorder
 # -----------------------------
 
-uploaded_file = st.file_uploader("Upload a WAV audio file", type=["wav"])
+recorded_audio = audio_recorder(
+    text="Click to record",
+    icon="🎤",
+    pause_text="Stop Recording",
+    recording_text="Recording...",
+    neutral_color="#cccccc",
+    active_color="#ff0000",
+    border_color="#cccccc",
+    background_color="#ffffff",
+    icon_color="#000000",
+    format="wav",
+    sample_rate=16000,
+    channels=1,
+    max_duration=30,  # Maximum recording duration in seconds
+)
 
-if uploaded_file is not None:
-    # Save the uploaded file temporarily
-    with open("temp.wav", "wb") as f:
-        f.write(uploaded_file.read())
-    # Transcribe the audio
-    with st.spinner("Transcribing..."):
-        transcript_hindi, transcript_english = transcribe_audio("temp.wav", model, translator)
+if recorded_audio:
+    st.success("Recording complete.")
+    with st.spinner("Transcribing and translating..."):
+        transcript_hindi, transcript_english = transcribe_audio(recorded_audio, model, translator)
     # Display results
     st.header("Transcription Results")
     col1, col2 = st.columns(2)
@@ -164,9 +185,6 @@ if uploaded_file is not None:
     with col2:
         st.subheader("English Translation")
         st.text_area("English", transcript_english, height=300)
-    
-    # Clean up temporary file
-    os.remove("temp.wav")
 
 # -----------------------------
 # Footer
